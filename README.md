@@ -18,6 +18,22 @@ Aplicativo Streamlit para comparar respostas de **GPT**, **Claude**, **Gemini**,
 
 ## Para você agora (login `kratos`)
 
+## Se você só tem GitHub, este é o caminho mais fácil
+
+Use **Streamlit Community Cloud**. As docs oficiais do Streamlit dizem que o serviço é grátis, conecta direto ao GitHub e publica apps em subdomínios `streamlit.app`.
+
+Passo mínimo para o seu caso:
+
+1. Abra <https://share.streamlit.io>
+2. Clique em **Continue with GitHub**
+3. Clique em **Create app**
+4. Escolha o repositório `kratosasrevjara-gif/gdp-dashboard`
+5. Em **Branch**, escolha `main`
+6. Em **Main file path**, use `app.py`
+7. Clique em **Deploy**
+
+O link público ficará em um subdomínio `streamlit.app` criado pelo Streamlit, e você pode mudar esse subdomínio depois.
+
 Se você criar o Space com o nome `concilio-sagrado-ias`, os links finais serão:
 
 ```text
