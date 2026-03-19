@@ -16,6 +16,27 @@ Aplicativo Streamlit para comparar respostas de **GPT**, **Claude**, **Gemini**,
 
 ## Link público e permanente no Hugging Face Spaces
 
+## Para você agora (login `kratos`)
+
+Se você criar o Space com o nome `concilio-sagrado-ias`, os links finais serão:
+
+```text
+https://huggingface.co/spaces/kratos/concilio-sagrado-ias
+```
+
+```text
+https://kratos-concilio-sagrado-ias.hf.space
+```
+
+Passo mínimo:
+
+1. Abra <https://huggingface.co/new-space>
+2. Em **Owner**, escolha `kratos`
+3. Em **Space name**, use `concilio-sagrado-ias`
+4. Em **SDK**, escolha **Docker**
+5. Faça upload destes arquivos: `streamlit_app.py`, `github_models_compare.py`, `compare_models.py`, `requirements.txt`, `README.md`, `app.py`, `Dockerfile` e a pasta `data/`
+6. Espere o build terminar e abra o link
+
 Quando você criar o Space, o link público ficará neste formato:
 
 ```text
