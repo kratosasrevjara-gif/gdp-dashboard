@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from compare_models import parse_models, render_side_by_side
-from github_models_compare import CompareConfig, DEFAULT_MODELS, ModelResult, compare_models, mock_results, resolve_token
+from github_models_compare import CompareConfig, DEFAULT_MODELS, ModelResult, compare_models, infer_via_github_models, mock_results, resolve_token
 
 
 class CompareModelsTests(unittest.TestCase):
@@ -41,6 +41,24 @@ class CompareModelsTests(unittest.TestCase):
             results = compare_models(config, models)
 
         self.assertEqual([item.label for item in results], ["First", "Second", "Third"])
+
+    def test_infer_records_elapsed_seconds(self):
+        config = CompareConfig(token="token", prompt="hello")
+        response = Mock()
+        response.ok = True
+        response.status_code = 200
+        response.json.return_value = {
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": {"total_tokens": 12},
+        }
+
+        with patch("github_models_compare.requests.post", return_value=response):
+            result = infer_via_github_models(config, "openai/gpt-4.1", "GPT")
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.content, "ok")
+        self.assertIsNotNone(result.elapsed_seconds)
+        self.assertGreaterEqual(result.elapsed_seconds, 0)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -30,6 +31,7 @@ class ModelResult:
     status_code: int | None = None
     error: str | None = None
     usage: dict[str, Any] | None = None
+    elapsed_seconds: float | None = None
 
 
 @dataclass
@@ -67,6 +69,8 @@ def infer_via_github_models(config: CompareConfig, model_id: str, label: str) ->
         "stream": False,
     }
 
+    started_at = time.perf_counter()
+
     try:
         response = requests.post(
             config.endpoint,
@@ -75,7 +79,14 @@ def infer_via_github_models(config: CompareConfig, model_id: str, label: str) ->
             timeout=config.timeout_seconds,
         )
     except requests.RequestException as exc:
-        return ModelResult(label=label, model_id=model_id, ok=False, content="", error=str(exc))
+        return ModelResult(
+            label=label,
+            model_id=model_id,
+            ok=False,
+            content="",
+            error=str(exc),
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
 
     if not response.ok:
         return ModelResult(
@@ -85,6 +96,7 @@ def infer_via_github_models(config: CompareConfig, model_id: str, label: str) ->
             content="",
             status_code=response.status_code,
             error=(response.text or "Erro sem corpo retornado pelo gateway.")[:800],
+            elapsed_seconds=time.perf_counter() - started_at,
         )
 
     data = response.json()
@@ -100,6 +112,7 @@ def infer_via_github_models(config: CompareConfig, model_id: str, label: str) ->
         content=(content or "").strip(),
         status_code=response.status_code,
         usage=data.get("usage"),
+        elapsed_seconds=time.perf_counter() - started_at,
     )
 
 

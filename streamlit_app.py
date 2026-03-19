@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import math
-from pathlib import Path
+import time
 
 import pandas as pd
 import streamlit as st
 
 from github_models_compare import (
     CompareConfig,
-    DEFAULT_MODELS,
     DEFAULT_SYSTEM_PROMPT,
     ModelResult,
     compare_models,
@@ -16,21 +14,24 @@ from github_models_compare import (
     resolve_token,
 )
 
-st.set_page_config(page_title="GitHub Models comparator", page_icon=":robot_face:", layout="wide")
+st.set_page_config(page_title="Concílio Sagrado de IAs", page_icon="🔮", layout="wide")
 
-
-@st.cache_data
-def get_gdp_data() -> pd.DataFrame:
-    data_filename = Path(__file__).parent / "data/gdp_data.csv"
-    raw_gdp_df = pd.read_csv(data_filename)
-    gdp_df = raw_gdp_df.melt(
-        ["Country Code"],
-        [str(x) for x in range(1960, 2023)],
-        "Year",
-        "GDP",
-    )
-    gdp_df["Year"] = pd.to_numeric(gdp_df["Year"])
-    return gdp_df
+DEFAULT_MODEL_SLOTS: list[dict[str, str | bool]] = [
+    {"label": "GPT", "model_id": "openai/gpt-4.1", "enabled": True},
+    {"label": "Claude", "model_id": "anthropic/claude-sonnet-4.5", "enabled": True},
+    {"label": "Gemini", "model_id": "google/gemini-2.5-flash", "enabled": True},
+    {"label": "DeepSeek", "model_id": "deepseek/deepseek-v3", "enabled": True},
+]
+QWEN_OPTION = {"label": "Qwen", "model_id": "qwen/qwen3-32b", "enabled": False}
+DEFAULT_PROMPT = (
+    "Compare respostas sobre cura energética, separando crença, evidência, limitações, "
+    "riscos e próximos passos responsáveis."
+)
+DEFAULT_SYSTEM = (
+    "Você está participando de uma comparação lado a lado entre modelos. Responda em português do Brasil, "
+    "com tom respeitoso, clareza e precisão. Em temas espirituais, energéticos ou de saúde, diferencie "
+    "interpretações pessoais, crenças, riscos e fatos verificáveis."
+)
 
 
 def build_results_table(results: list[ModelResult]) -> pd.DataFrame:
@@ -38,151 +39,196 @@ def build_results_table(results: list[ModelResult]) -> pd.DataFrame:
     for result in results:
         rows.append(
             {
-                "Model": result.label,
+                "Modelo": result.label,
                 "Model ID": result.model_id,
-                "Status": "ok" if result.ok else "error",
+                "Status": "ok" if result.ok else "erro",
                 "HTTP": result.status_code,
-                "Total tokens": (result.usage or {}).get("total_tokens"),
-                "Preview": (result.content or result.error or "")[:140],
+                "Tempo (s)": f"{(result.elapsed_seconds or 0):.2f}",
+                "Tokens": (result.usage or {}).get("total_tokens"),
+                "Resumo": (result.content or result.error or "")[:180],
             }
         )
     return pd.DataFrame(rows)
 
 
-def render_gdp_reference() -> None:
-    gdp_df = get_gdp_data()
-    with st.expander("Ver dashboard de PIB de referência", expanded=False):
-        st.caption("Mantido no projeto como exemplo Streamlit original.")
-        min_value = int(gdp_df["Year"].min())
-        max_value = int(gdp_df["Year"].max())
-        from_year, to_year = st.slider(
-            "Período do PIB",
-            min_value=min_value,
-            max_value=max_value,
-            value=[min_value, max_value],
-        )
-        countries = gdp_df["Country Code"].unique()
-        selected_countries = st.multiselect(
-            "Países",
-            countries,
-            ["DEU", "FRA", "GBR", "BRA", "MEX", "JPN"],
-        )
-        filtered_gdp_df = gdp_df[
-            (gdp_df["Country Code"].isin(selected_countries))
-            & (gdp_df["Year"] <= to_year)
-            & (from_year <= gdp_df["Year"])
-        ]
-        st.line_chart(filtered_gdp_df, x="Year", y="GDP", color="Country Code")
-        first_year = gdp_df[gdp_df["Year"] == from_year]
-        last_year = gdp_df[gdp_df["Year"] == to_year]
-        cols = st.columns(4)
-        for index, country in enumerate(selected_countries):
-            with cols[index % len(cols)]:
-                first_gdp = first_year[first_year["Country Code"] == country]["GDP"].iat[0] / 1_000_000_000
-                last_gdp = last_year[last_year["Country Code"] == country]["GDP"].iat[0] / 1_000_000_000
-                if math.isnan(first_gdp):
-                    growth = "n/a"
-                    delta_color = "off"
-                else:
-                    growth = f"{last_gdp / first_gdp:,.2f}x"
-                    delta_color = "normal"
-                st.metric(
-                    label=f"{country} GDP",
-                    value=f"{last_gdp:,.0f}B",
-                    delta=growth,
-                    delta_color=delta_color,
-                )
+def build_export_text(results: list[ModelResult]) -> str:
+    blocks = []
+    for result in results:
+        header = f"=== {result.label} | {result.model_id} ==="
+        body = result.content if result.ok else f"ERRO: {result.error}"
+        blocks.append(f"{header}\nTempo: {(result.elapsed_seconds or 0):.2f}s\n\n{body}")
+    return "\n\n---\n\n".join(blocks)
 
 
-def render_model_inputs() -> list[tuple[str, str]]:
-    configured_models: list[tuple[str, str]] = []
-    columns = st.columns(len(DEFAULT_MODELS))
-    for index, ((default_label, default_model_id), column) in enumerate(zip(DEFAULT_MODELS, columns), start=1):
+def render_header() -> None:
+    st.title("🔮 Concílio Sagrado de IAs")
+    st.markdown(
+        """
+        <div style='text-align: center'>
+            <h3>Compare GPT, Claude, Gemini, DeepSeek e Qwen lado a lado via GitHub Models.</h3>
+            <p>Cole seu token, escreva o prompt e veja as respostas em paralelo.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Uso temático/ritual opcional. Para temas espirituais, energéticos ou de saúde, trate as respostas "
+        "como comparação de linguagem dos modelos, não como validação factual ou orientação clínica."
+    )
+
+
+def render_sidebar() -> tuple[str, float, str, bool, int, int]:
+    with st.sidebar:
+        st.header("⚙️ Portal de Configuração")
+        github_token = st.text_input(
+            "🔑 Token do GitHub Models",
+            type="password",
+            value=resolve_token(),
+            help="Use um PAT do GitHub com acesso a models.",
+        )
+        temperature = st.slider(
+            "🌡️ Temperatura (criatividade)",
+            min_value=0.0,
+            max_value=2.0,
+            value=0.7,
+            step=0.1,
+        )
+        system_prompt = st.text_area(
+            "📜 System Prompt",
+            value=DEFAULT_SYSTEM_PROMPT if DEFAULT_SYSTEM_PROMPT else DEFAULT_SYSTEM,
+            height=160,
+        )
+        max_tokens = st.slider("🧾 Max tokens", min_value=128, max_value=4096, value=1200, step=64)
+        timeout_seconds = st.slider("⏱️ Timeout (s)", min_value=10, max_value=120, value=60, step=5)
+        use_mock = st.checkbox("🧪 Usar respostas simuladas", value=not bool(github_token))
+
+        st.markdown("---")
+        st.markdown("### 🤖 Modelos sugeridos")
+        st.markdown(
+            "- `openai/gpt-4.1`\n"
+            "- `anthropic/claude-sonnet-4.5`\n"
+            "- `google/gemini-2.5-flash`\n"
+            "- `deepseek/deepseek-v3`\n"
+            "- `qwen/qwen3-32b`"
+        )
+
+    return github_token, temperature, system_prompt, use_mock, max_tokens, timeout_seconds
+
+
+def render_model_selector() -> list[tuple[str, str]]:
+    st.header("🤖 Seleção do Concílio")
+    active_models: list[tuple[str, str]] = []
+    columns = st.columns(len(DEFAULT_MODEL_SLOTS))
+    for index, (column, model) in enumerate(zip(columns, DEFAULT_MODEL_SLOTS), start=1):
         with column:
-            label = st.text_input(f"Rótulo {index}", value=default_label, key=f"label_{index}")
-            model_id = st.text_input(f"Model ID {index}", value=default_model_id, key=f"model_{index}")
-            configured_models.append((label.strip() or f"Modelo {index}", model_id.strip()))
-    return configured_models
+            label = st.text_input(f"Rótulo {index}", value=str(model["label"]), key=f"label_{index}")
+            model_id = st.text_input(f"Modelo {index}", value=str(model["model_id"]), key=f"model_{index}")
+            enabled = st.checkbox("Ativar", value=bool(model["enabled"]), key=f"enabled_{index}")
+            if enabled and model_id.strip():
+                active_models.append((label.strip() or f"Modelo {index}", model_id.strip()))
+
+    use_qwen = st.checkbox("🔮 Ativar também Qwen", value=bool(QWEN_OPTION["enabled"]))
+    if use_qwen:
+        active_models.append((str(QWEN_OPTION["label"]), str(QWEN_OPTION["model_id"])))
+
+    return active_models
 
 
 def render_result_cards(results: list[ModelResult]) -> None:
-    response_columns = st.columns(len(results))
-    for column, result in zip(response_columns, results):
+    st.header("📜 Respostas do Concílio")
+    columns = st.columns(len(results))
+    for column, result in zip(columns, results):
         with column:
-            st.markdown(f"### {result.label}")
-            st.caption(result.model_id)
+            st.subheader(f"🤖 {result.label}")
+            st.caption(f"{result.model_id} · Tempo: {(result.elapsed_seconds or 0):.2f}s")
             if result.ok:
-                st.write(result.content or "(sem conteúdo retornado)")
+                st.markdown(result.content or "(sem conteúdo retornado)")
             else:
                 status = f"HTTP {result.status_code}" if result.status_code else "Erro de conexão"
                 st.error(f"{status}: {result.error}")
 
 
-def main() -> None:
-    st.title("🧠 Comparador de GPT, Claude, Gemini e DeepSeek")
-    st.write(
-        "Envie o mesmo prompt para quatro modelos via GitHub Models e veja as respostas lado a lado. "
-        "Se você ainda não tiver token, ative o modo simulado para testar a interface grátis aqui mesmo."
-    )
-
-    with st.form("compare-form"):
-        prompt = st.text_area(
-            "Prompt",
-            value=(
-                "Compare respostas sobre cura energética, separando crença, evidência, limitações, "
-                "riscos e próximos passos responsáveis."
-            ),
-            height=180,
+def render_footer() -> None:
+    with st.expander("ℹ️ Como obter seu token do GitHub Models"):
+        st.markdown(
+            """
+            1. Acesse `github.com/settings/tokens`.
+            2. Gere um token pessoal compatível com GitHub Models.
+            3. Se o token for fine-grained, garanta a permissão **models: read**.
+            4. Cole o token no campo lateral e execute a comparação.
+            """
         )
-        system_prompt = st.text_area("System prompt", value=DEFAULT_SYSTEM_PROMPT, height=120)
+    st.markdown("---")
+    st.caption("🔮 Portal do Concílio Sagrado · comparação lado a lado via GitHub Models")
 
-        config_col, options_col = st.columns([1.2, 1])
-        with config_col:
-            token = st.text_input(
-                "GitHub token",
-                type="password",
-                value=resolve_token(),
-                help="Use um token com acesso ao GitHub Models. Ele fica somente nesta sessão do app.",
-            )
-            use_mock = st.checkbox("Usar respostas simuladas", value=not bool(token))
-        with options_col:
-            temperature = st.slider("Temperature", min_value=0.0, max_value=1.5, value=0.3, step=0.1)
-            max_tokens = st.slider("Max tokens", min_value=128, max_value=2048, value=700, step=64)
-            timeout_seconds = st.slider("Timeout (s)", min_value=10, max_value=120, value=45, step=5)
 
-        st.markdown("#### Modelos comparados")
-        configured_models = render_model_inputs()
-        submitted = st.form_submit_button("Executar comparação", type="primary")
+def main() -> None:
+    render_header()
+    github_token, temperature, system_prompt, use_mock, max_tokens, timeout_seconds = render_sidebar()
+    active_models = render_model_selector()
+
+    st.header("📝 Invocação")
+    prompt = st.text_area(
+        "Digite seu prompt para o concílio:",
+        value=DEFAULT_PROMPT,
+        height=180,
+    )
 
     st.info(
         "Endpoint usado: POST https://models.github.ai/inference/chat/completions. "
-        "Sem token válido, o app pode rodar em modo simulado para você validar layout e fluxo."
+        "Sem token, ative o modo simulado para testar a interface."
     )
 
-    if submitted:
+    if st.button("🔮 INVOCAR CONCÍLIO", type="primary", use_container_width=True):
+        if not active_models:
+            st.warning("Selecione pelo menos um modelo para comparar.")
+            render_footer()
+            return
+
+        if not github_token and not use_mock:
+            st.error("Token do GitHub é obrigatório quando o modo simulado está desativado.")
+            render_footer()
+            return
+
+        progress_bar = st.progress(0.0, text="Preparando o concílio...")
+        start_time = time.perf_counter()
+
         if use_mock:
-            results = mock_results(prompt, configured_models)
+            progress_bar.progress(0.35, text="Gerando respostas simuladas...")
+            results = mock_results(prompt, active_models)
         else:
-            if not token:
-                st.error("Preencha o GitHub token ou marque 'Usar respostas simuladas'.")
-                return
+            progress_bar.progress(0.35, text="Consultando GitHub Models...")
             config = CompareConfig(
-                token=token,
+                token=github_token,
                 prompt=prompt,
-                system_prompt=system_prompt,
+                system_prompt=system_prompt or DEFAULT_SYSTEM,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 timeout_seconds=timeout_seconds,
+                max_workers=len(active_models),
             )
-            with st.spinner("Consultando GitHub Models em paralelo..."):
-                results = compare_models(config, configured_models)
+            results = compare_models(config, active_models)
 
-        st.subheader("Resumo")
-        st.dataframe(build_results_table(results), use_container_width=True, hide_index=True)
-        st.subheader("Respostas lado a lado")
+        progress_bar.progress(1.0, text="Comparação concluída.")
+        time.sleep(0.2)
+        progress_bar.empty()
+
+        elapsed = time.perf_counter() - start_time
+        st.success(f"Comparação finalizada em {elapsed:.2f}s.")
         render_result_cards(results)
 
-    render_gdp_reference()
+        st.header("📊 Análise Comparativa")
+        summary_df = build_results_table(results)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+        st.download_button(
+            label="📥 Exportar respostas completas",
+            data=build_export_text(results),
+            file_name=f"concilio_sagrado_{int(time.time())}.txt",
+            mime="text/plain",
+        )
+
+    render_footer()
 
 
 if __name__ == "__main__":
