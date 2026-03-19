@@ -125,6 +125,17 @@ No app publicado:
 - escreva seu **prompt**
 - clique para comparar as respostas lado a lado
 
+## Se você quiser fazer uma vez e nunca mais mexer
+
+Eu também deixei um workflow do GitHub Actions pronto em `.github/workflows/sync-to-hf-space.yml`.
+
+Depois que você:
+1. criar o Space `kratos/concilio-sagrado-ias` no Hugging Face;
+2. criar um token no Hugging Face;
+3. salvar esse token no GitHub como secret chamado `HF_TOKEN`;
+
+cada push novo na branch `main` pode atualizar o Space automaticamente.
+
 ## Arquivos de deploy já preparados aqui
 
 Este repositório já está preparado para o caminho recomendado no Spaces:
